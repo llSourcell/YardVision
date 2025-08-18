@@ -19,6 +19,8 @@ opencv-python-headless = "^4.9.0.80"
 Pillow = "^10.4.0"
 onnxruntime = "^1.18.0"
 tqdm = "^4.66.4"
+ultralytics = "^8.2.0"
+supervision = "^0.18.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.1"
@@ -86,6 +88,12 @@ ignore_missing_imports = true
 ignore_missing_imports = true
 
 [tool.mypy.onnxruntime.*]
+ignore_missing_imports = true
+
+[tool.mypy.ultralytics.*]
+ignore_missing_imports = true
+
+[tool.mypy.supervision.*]
 ignore_missing_imports = true
 
 [build-system]

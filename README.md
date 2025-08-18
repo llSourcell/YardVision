@@ -6,6 +6,7 @@ Edge-deployable computer vision application scaffold, optimized for Python 3.11+
 
 - Typer-powered CLI with `run` command
 - Simple CV pipeline with OpenCV (dummy inference + annotation)
+ - Video processing pipeline with YOLOv8 detection + ByteTrack MOT using `supervision`
 - Strict typing (mypy --strict), linting (ruff), tests (pytest)
 - Pre-commit hooks configured
 - Dockerfile optimized for CPU-based CV workloads
@@ -61,6 +62,9 @@ poetry run yardvision run --source 0
 
 # From video file with display window
 poetry run yardvision run --source ./sample.mp4 --display
+
+# Process a video file and save annotated output
+poetry run yardvision process-video ./input.mp4 ./output.mp4 --model yolov8m.pt
 ```
 
 ### Tests

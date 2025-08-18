@@ -9,6 +9,7 @@ from rich.traceback import install as install_rich_traceback
 
 from vision.core.config import AppConfig, load_config
 from vision.pipeline.processor import FrameProcessor
+from vision.pipeline.processor import VideoProcessor
 
 
 install_rich_traceback(show_locals=True)
@@ -45,6 +46,22 @@ def run(
         app_config: AppConfig = load_config(config)
         processor = FrameProcessor(app_config=app_config)
         processor.process_stream(source=source, display=display)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("process-video")
+def process_video(
+    input_path: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    output_path: Path = typer.Argument(...),
+    model: str = typer.Option("yolov8m.pt", help="YOLOv8 model weights path or alias"),
+) -> None:
+    """Process an input video file and save annotated detections/tracks to output."""
+    try:
+        processor = VideoProcessor(model_path=str(model))
+        processor.process_video(str(input_path), str(output_path))
+        console.print(f"[green]Saved:[/green] {output_path}")
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
