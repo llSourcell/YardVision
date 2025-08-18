@@ -114,6 +114,11 @@ class VideoProcessor:
         # Annotators
         self._box_annotator = sv.BoundingBoxAnnotator()
         self._label_annotator = sv.LabelAnnotator()
+        self._heatmap_annotator = sv.HeatMapAnnotator()
+
+        # Zone components (initialized in process_video when resolution is known)
+        self._zone = None
+        self._zone_annotator = None
         # COCO class name mapping from model
         try:
             self._class_names = self._model.model.names  # type: ignore[attr-defined]
@@ -148,6 +153,23 @@ class VideoProcessor:
         video_info = sv.VideoInfo.from_video_path(input_path)
         frames = sv.get_video_frames_generator(input_path)
 
+        # Define a polygonal zone using normalized coordinates, then scale to pixels
+        width, height = video_info.width, video_info.height
+        polygon_norm = np.array(
+            [
+                [0.25, 0.70],
+                [0.75, 0.70],
+                [0.85, 0.95],
+                [0.15, 0.95],
+            ],
+            dtype=np.float32,
+        )
+        polygon_px = np.column_stack((polygon_norm[:, 0] * width, polygon_norm[:, 1] * height)).astype(
+            np.int32
+        )
+        self._zone = sv.PolygonZone(polygon=polygon_px, frame_resolution_wh=(width, height))
+        self._zone_annotator = sv.PolygonZoneAnnotator(zone=self._zone, color=sv.Color.blue())
+
         # Use a broadly supported codec for MP4 writing in headless envs
         with sv.VideoSink(output_path, video_info, codec="mp4v") as sink:
             for frame in frames:
@@ -159,22 +181,82 @@ class VideoProcessor:
                 # Tracking
                 tracked = self._tracker.update_with_detections(detections)
 
-                # Labels for annotation
+                # Heatmap first for path visualization
+                annotated = self._heatmap_annotator.annotate(scene=frame.copy(), detections=tracked)
+
+                # Geofencing and dwell-time count
+                if self._zone_annotator is not None and self._zone is not None:
+                    self._zone_annotator.annotate(annotated)
+                    in_zone_mask = self._zone.trigger(tracked)
+                    dwell_count = int(np.count_nonzero(in_zone_mask))
+                    cv2.putText(
+                        annotated,
+                        f"In Zone: {dwell_count}",
+                        (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        (255, 255, 255),
+                        2,
+                        cv2.LINE_AA,
+                    )
+
+                # Near-miss detection between persons and vehicles (cars/trucks)
+                boxes = tracked.xyxy.astype(np.float32)
+                centers = np.column_stack(((boxes[:, 0] + boxes[:, 2]) / 2, (boxes[:, 1] + boxes[:, 3]) / 2))
+                class_ids = tracked.class_id if tracked.class_id is not None else np.full(len(tracked), -1)
+                person_mask = class_ids == 0
+                vehicle_mask = np.isin(class_ids, np.array([2, 7]))
+                near_mask = np.zeros(len(tracked), dtype=bool)
+                threshold_px = 75.0
+                person_idx = np.where(person_mask)[0]
+                vehicle_idx = np.where(vehicle_mask)[0]
+                if len(person_idx) > 0 and len(vehicle_idx) > 0:
+                    for pi in person_idx:
+                        pc = centers[pi]
+                        vc = centers[vehicle_idx]
+                        dists = np.linalg.norm(vc - pc, axis=1)
+                        if dists.size:
+                            min_j = int(np.argmin(dists))
+                            if dists[min_j] < threshold_px:
+                                near_mask[pi] = True
+                                near_mask[vehicle_idx[min_j]] = True
+
+                # Labels with near tag
                 labels = []
                 for i in range(len(tracked)):
-                    class_id = int(tracked.class_id[i]) if tracked.class_id is not None else -1
+                    class_id = int(class_ids[i])
                     confidence = float(tracked.confidence[i]) if tracked.confidence is not None else 0.0
                     track_id = int(tracked.tracker_id[i]) if tracked.tracker_id is not None else -1
                     class_name = self._class_names.get(class_id, str(class_id))
-                    labels.append(f"{class_name} #{track_id} {confidence:.2f}")
+                    tag = " NEAR" if near_mask[i] else ""
+                    labels.append(f"{class_name} #{track_id}{tag} {confidence:.2f}")
 
-                # Annotation
-                annotated = self._box_annotator.annotate(scene=frame.copy(), detections=tracked)
-                annotated = self._label_annotator.annotate(
-                    scene=annotated,
-                    detections=tracked,
-                    labels=labels,
-                )
+                # Annotate with different colors for near-miss
+                normal_mask = ~near_mask
+                if np.any(normal_mask):
+                    det_norm = tracked[normal_mask]
+                    labels_norm = [lbl for lbl, m in zip(labels, normal_mask) if m]
+                    annotated = self._box_annotator.annotate(scene=annotated, detections=det_norm)
+                    annotated = self._label_annotator.annotate(
+                        scene=annotated, detections=det_norm, labels=labels_norm
+                    )
+                if np.any(near_mask):
+                    det_near = tracked[near_mask]
+                    labels_near = [lbl for lbl, m in zip(labels, near_mask) if m]
+                    # Manually draw near-miss boxes and labels in red
+                    boxes_near = det_near.xyxy.astype(int)
+                    for (x1, y1, x2, y2), label in zip(boxes_near, labels_near):
+                        cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                        cv2.putText(
+                            annotated,
+                            label,
+                            (x1, max(0, y1 - 10)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (0, 0, 255),
+                            2,
+                            cv2.LINE_AA,
+                        )
 
                 sink.write_frame(annotated)
 
