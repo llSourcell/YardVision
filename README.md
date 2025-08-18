@@ -2,6 +2,8 @@
 
 Edge-deployable computer vision application scaffold, optimized for Python 3.11+, Poetry, and strict quality tooling. Provides a Typer CLI, a simple processing pipeline, analytics placeholders, Docker setup, and CI workflow.
 
+![Demo](demo.gif)
+
 ## Features
 
 - Typer-powered CLI with `run` command
