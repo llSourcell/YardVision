@@ -1,0 +1,21 @@
+version: "3.9"
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: yardvision:latest
+    container_name: yardvision_app
+    env_file:
+      - .env
+    command: ["run", "--source", "0"]
+    volumes:
+      - ./:/app
+    devices:
+      # Map camera device if available; comment out on non-Linux
+      - "/dev/video0:/dev/video0"
+    ports:
+      - "8000:8000"
+    stdin_open: true
+    tty: true
+
