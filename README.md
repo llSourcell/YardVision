@@ -1,6 +1,6 @@
 # YardVision
 
-Privacy-first, edge-deployable computer vision application optimized for Python 3.11+, Poetry, and strict quality tooling. It features YOLOv8 detection, ByteTrack MOT, spatial analytics (heatmaps, zones, dwell-time, near-miss), and GDPR-compliant selective blurring.
+Privacy-first, edge-deployable computer vision application optimized for Python 3.11+, Poetry, and strict quality tooling. It features YOLOv8 detection, ByteTrack MOT, spatial analytics (heatmaps, zones, dwell-time, near-miss), and GDPR-compliant selective blurring.  ![Live Demo](https://yardvision-demo-df5c32-caa3aefc0f47.herokuapp.com/)
 
 ![Demo](demo.gif)
 
