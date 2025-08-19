@@ -1,14 +1,22 @@
 # YardVision
 
-Edge-deployable computer vision application scaffold, optimized for Python 3.11+, Poetry, and strict quality tooling. Provides a Typer CLI, a simple processing pipeline, analytics placeholders, Docker setup, and CI workflow.
+Privacy-first, edge-deployable computer vision application optimized for Python 3.11+, Poetry, and strict quality tooling. It features YOLOv8 detection, ByteTrack MOT, spatial analytics (heatmaps, zones, dwell-time, near-miss), and GDPR-compliant selective blurring.
 
 ![Demo](demo.gif)
+
+## Why YardVision
+
+- **Privacy-first**: On-device, GDPR-conscious selective blurring of people.
+- **Edge-ready**: CPU-friendly baseline with clean path to GPU acceleration.
+- **Operational analytics**: Zones, dwell counts, and near-miss heuristics for safety.
+- **Production hygiene**: CI, typing, linting, pre-commit, containers.
 
 ## Features
 
 - Typer-powered CLI with `run` command
-- Simple CV pipeline with OpenCV (dummy inference + annotation)
- - Video processing pipeline with YOLOv8 detection + ByteTrack MOT using `supervision`
+- YOLOv8 detection + ByteTrack MOT using `supervision`
+- Spatial analytics: heatmap trails, polygon zones with dwell counts, near-miss highlighting
+- GDPR selective blurring: blur only the `person` class before overlays
 - Strict typing (mypy --strict), linting (ruff), tests (pytest)
 - Pre-commit hooks configured
 - Dockerfile optimized for CPU-based CV workloads
@@ -65,8 +73,8 @@ poetry run yardvision run --source 0
 # From video file with display window
 poetry run yardvision run --source ./sample.mp4 --display
 
-# Process a video file and save annotated output
-poetry run yardvision process-video ./input.mp4 ./output.mp4 --model yolov8m.pt
+# Process a video file with analytics + privacy blurring and save annotated output
+poetry run yardvision process-video ./input.mp4 ./output.mp4 --model yolov8n.pt
 ```
 
 ### Tests
@@ -101,6 +109,34 @@ Notes:
 - `opencv-python-headless` is used for headless environments. For local GUI display inside the container, additional X11 setup is required; otherwise use host Python for display.
 - To leverage GPUs later, switch base image to CUDA-enabled and add the appropriate runtime (e.g., `--gpus all`).
 
+## Architecture Overview
+
+```
+src/
+  yardvision/
+    cli.py                  # Typer CLI: run, process-video
+  vision/
+    core/config.py          # AppConfig, settings
+    pipeline/processor.py   # FrameProcessor (live), VideoProcessor (batch)
+    analytics/              # (extensible) analytics events
+```
+
+- **Detection**: Ultralytics `YOLO` models (e.g., `yolov8n.pt`).
+- **Tracking**: `supervision.ByteTrack` for MOT IDs.
+- **Analytics**: `HeatMapAnnotator`, `PolygonZone` with `PolygonZoneAnnotator`, dwell counting.
+- **Privacy**: `BlurAnnotator` over `person` detections before drawing other overlays.
+- **Output**: `VideoSink` writes MP4 (`mp4v` codec).
+
+### Key Pipeline Steps
+
+1) Run YOLO on each frame and convert to `supervision.Detections`.
+2) Filter to `person`, `car`, `truck` classes.
+3) Update ByteTrack for persistent IDs.
+4) Blur only `person` detections on the base frame.
+5) Overlay heatmap, zone polygon and dwell count.
+6) Compute near-miss (pixel-distance heuristic) and highlight in red.
+7) Save annotated frame.
+
 ## Configuration
 
 Basic settings are defined in `vision/core/config.py`. Environment variables from `.env` are loaded automatically if present. You can add parsing of TOML/YAML files in `load_config()` when needed.
@@ -112,8 +148,9 @@ GitHub Actions workflow runs lint, type-check, and tests on pushes and PRs to `m
 ## Development Tips
 
 - Use `loguru` for structured logging and `rich` for better tracebacks and CLI output.
-- Extend `FrameProcessor._dummy_infer` with a real ONNX model using `onnxruntime`.
-- Add analytics publishing in `vision/analytics/` and wire into the pipeline.
+- Replace heuristic near-miss with calibrated physical distance using homography.
+- Add RTSP ingestion and sink for live deployments.
+- Promote zones to config and expose via CLI.
 
 ## License
 

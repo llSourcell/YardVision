@@ -115,6 +115,7 @@ class VideoProcessor:
         self._box_annotator = sv.BoundingBoxAnnotator()
         self._label_annotator = sv.LabelAnnotator()
         self._heatmap_annotator = sv.HeatMapAnnotator()
+        self._blur_annotator = sv.BlurAnnotator()
 
         # Zone components (initialized in process_video when resolution is known)
         self._zone = None
@@ -181,8 +182,16 @@ class VideoProcessor:
                 # Tracking
                 tracked = self._tracker.update_with_detections(detections)
 
-                # Heatmap first for path visualization
-                annotated = self._heatmap_annotator.annotate(scene=frame.copy(), detections=tracked)
+                # Start from base frame and apply GDPR-compliant blurring for persons
+                annotated = frame.copy()
+                class_ids = tracked.class_id if tracked.class_id is not None else np.full(len(tracked), -1)
+                person_mask = class_ids == 0
+                if np.any(person_mask):
+                    det_person = tracked[person_mask]
+                    annotated = self._blur_annotator.annotate(scene=annotated, detections=det_person)
+
+                # Heatmap next for path visualization (over blurred content)
+                annotated = self._heatmap_annotator.annotate(scene=annotated, detections=tracked)
 
                 # Geofencing and dwell-time count
                 if self._zone_annotator is not None and self._zone is not None:
@@ -203,8 +212,6 @@ class VideoProcessor:
                 # Near-miss detection between persons and vehicles (cars/trucks)
                 boxes = tracked.xyxy.astype(np.float32)
                 centers = np.column_stack(((boxes[:, 0] + boxes[:, 2]) / 2, (boxes[:, 1] + boxes[:, 3]) / 2))
-                class_ids = tracked.class_id if tracked.class_id is not None else np.full(len(tracked), -1)
-                person_mask = class_ids == 0
                 vehicle_mask = np.isin(class_ids, np.array([2, 7]))
                 near_mask = np.zeros(len(tracked), dtype=bool)
                 threshold_px = 75.0
